@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
 
@@ -73,28 +73,85 @@ class RepositoryStore:
             if cursor.rowcount == 0:
                 raise RepositoryNotFoundError(f"Repository {repository_id} was not found")
 
+    def set_local_path(self, repository_id: int, local_path: Path) -> None:
+        with self.database.transaction() as connection:
+            cursor = connection.execute(
+                "UPDATE repositories SET local_path = ? WHERE id = ?",
+                (str(local_path.resolve()), repository_id),
+            )
+            if cursor.rowcount == 0:
+                raise RepositoryNotFoundError(f"Repository {repository_id} was not found")
+
     def replace_analysis(
         self,
         repository_id: int,
         ref_sha: str,
         commits: Iterable[ParsedCommit],
+        *,
+        batch_size: int = 250,
+        progress: Callable[[int], None] | None = None,
     ) -> int:
-        """Atomically replace derived history, rolling back incomplete analyses."""
-        author_ids: dict[tuple[str, str], int] = {}
-        commit_count = 0
+        """Replace derived history in bounded batches hidden behind analysis status."""
+        if batch_size < 1:
+            raise ValueError("batch_size must be positive")
 
         with self.database.transaction() as connection:
             self._assert_repository_exists(connection, repository_id)
-            connection.execute(
-                "DELETE FROM object_changes WHERE repository_id = ?", (repository_id,)
-            )
-            connection.execute("DELETE FROM commits WHERE repository_id = ?", (repository_id,))
-            connection.execute(
-                "DELETE FROM author_merges WHERE repository_id = ?", (repository_id,)
-            )
-            connection.execute("DELETE FROM authors WHERE repository_id = ?", (repository_id,))
+            self._clear_analysis(connection, repository_id)
 
-            for parsed in commits:
+        author_ids: dict[tuple[str, str], int] = {}
+        commit_count = 0
+        batch: list[ParsedCommit] = []
+        for parsed in commits:
+            batch.append(parsed)
+            if len(batch) < batch_size:
+                continue
+            self._insert_batch(repository_id, batch, author_ids)
+            commit_count += len(batch)
+            batch.clear()
+            if progress is not None:
+                progress(commit_count)
+
+        if batch:
+            self._insert_batch(repository_id, batch, author_ids)
+            commit_count += len(batch)
+            if progress is not None:
+                progress(commit_count)
+
+        with self.database.transaction() as connection:
+            connection.execute(
+                """
+                UPDATE repositories
+                SET ref_sha = ?, status = ?, error = NULL, commit_count = ?,
+                    analysed_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (ref_sha, RepositoryStatus.READY, commit_count, repository_id),
+            )
+
+        return commit_count
+
+    def clear_analysis(self, repository_id: int) -> None:
+        """Remove partial derived data after an interrupted or failed analysis."""
+        with self.database.transaction() as connection:
+            self._assert_repository_exists(connection, repository_id)
+            self._clear_analysis(connection, repository_id)
+
+    @staticmethod
+    def _clear_analysis(connection: sqlite3.Connection, repository_id: int) -> None:
+        connection.execute("DELETE FROM object_changes WHERE repository_id = ?", (repository_id,))
+        connection.execute("DELETE FROM commits WHERE repository_id = ?", (repository_id,))
+        connection.execute("DELETE FROM author_merges WHERE repository_id = ?", (repository_id,))
+        connection.execute("DELETE FROM authors WHERE repository_id = ?", (repository_id,))
+
+    def _insert_batch(
+        self,
+        repository_id: int,
+        batch: list[ParsedCommit],
+        author_ids: dict[tuple[str, str], int],
+    ) -> None:
+        with self.database.transaction() as connection:
+            for parsed in batch:
                 commit = parsed.commit
                 author_id = self._author_id(
                     connection,
@@ -136,19 +193,6 @@ class RepositoryStore:
                             for change in parsed.changes
                         ),
                     )
-                commit_count += 1
-
-            connection.execute(
-                """
-                UPDATE repositories
-                SET ref_sha = ?, status = ?, error = NULL, commit_count = ?,
-                    analysed_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-                """,
-                (ref_sha, RepositoryStatus.READY, commit_count, repository_id),
-            )
-
-        return commit_count
 
     @staticmethod
     def _assert_repository_exists(connection: sqlite3.Connection, repository_id: int) -> None:

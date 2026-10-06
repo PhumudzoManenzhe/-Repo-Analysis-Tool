@@ -19,6 +19,13 @@ class RepositoryStatus(StrEnum):
     FAILED = "failed"
 
 
+class JobStatus(StrEnum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+
+
 @dataclass(frozen=True, slots=True)
 class CommitRecord:
     sha: str

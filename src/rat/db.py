@@ -60,6 +60,21 @@ CREATE TABLE IF NOT EXISTS object_changes (
         REFERENCES commits(repository_id, sha) ON DELETE CASCADE
 ) WITHOUT ROWID;
 
+CREATE TABLE IF NOT EXISTS ingestion_jobs (
+    id TEXT PRIMARY KEY,
+    repository_id INTEGER NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL CHECK (kind IN ('clone', 'zip')),
+    status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'succeeded', 'failed')),
+    stage TEXT NOT NULL,
+    progress INTEGER NOT NULL DEFAULT 0 CHECK (progress BETWEEN 0 AND 100),
+    message TEXT NOT NULL,
+    error TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    started_at TEXT,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_commits_repo_date
     ON commits(repository_id, committer_date);
 CREATE INDEX IF NOT EXISTS idx_commits_repo_author
@@ -70,6 +85,10 @@ CREATE INDEX IF NOT EXISTS idx_changes_repo_commit
     ON object_changes(repository_id, commit_sha);
 CREATE INDEX IF NOT EXISTS idx_author_merges_canonical
     ON author_merges(repository_id, canonical_author_id);
+CREATE INDEX IF NOT EXISTS idx_ingestion_jobs_repository
+    ON ingestion_jobs(repository_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_ingestion_jobs_status
+    ON ingestion_jobs(status, created_at);
 """
 
 

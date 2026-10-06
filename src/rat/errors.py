@@ -19,3 +19,15 @@ class RepositoryNotFoundError(RatError):
 
 class InvalidCommitSetError(RatError):
     """Raised when commit selection filters are invalid."""
+
+
+class InvalidArchiveError(RatError):
+    """Raised when an uploaded archive is unsafe or malformed."""
+
+
+class InvalidRemoteUrlError(RatError):
+    """Raised when a clone URL is malformed or targets a blocked network."""
+
+
+class JobNotFoundError(RatError):
+    """Raised when a background ingestion job does not exist."""

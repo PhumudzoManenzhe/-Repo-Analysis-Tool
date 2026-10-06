@@ -41,6 +41,13 @@ class GitHistoryParser:
             raise GitCommandError(f"Git returned an invalid commit hash for {ref!r}")
         return sha.lower()
 
+    def count_commits(self, ref_sha: str) -> int:
+        result = self._run_git("rev-list", "--count", "--no-merges", ref_sha)
+        try:
+            return int(result.stdout.strip())
+        except ValueError as error:
+            raise GitCommandError("Git returned an invalid commit count") from error
+
     def iter_commits(self, ref_sha: str) -> Iterator[ParsedCommit]:
         """Yield non-merge commits and recursively aggregated object changes."""
         command = [
