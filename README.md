@@ -34,7 +34,7 @@ pip install -e '.[dev]'
 rat-api
 ```
 
-The API is available at `http://127.0.0.1:8000`, with interactive documentation at `http://127.0.0.1:8000/docs`.
+The dashboard is available at `http://127.0.0.1:8000`, with interactive API documentation at `http://127.0.0.1:8000/docs`. It supports local paths, secure ZIP uploads, HTTPS cloning, background progress, metric filters, and CSV export.
 
 Analyse a local Git working tree:
 

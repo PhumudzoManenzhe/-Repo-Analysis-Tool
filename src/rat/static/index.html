@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Explore repository history, ownership, and code churn.">
+  <title>RepoScope — Repository Intelligence</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Repository navigation">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">R</span>
+        <div>
+          <strong>RepoScope</strong>
+          <span>Repository intelligence</span>
+        </div>
+      </div>
+
+      <div class="sidebar-heading">
+        <span>Repositories</span>
+        <button id="refresh-repositories" class="icon-button" type="button" aria-label="Refresh repositories" title="Refresh repositories">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5"/></svg>
+        </button>
+      </div>
+      <nav id="repository-list" class="repository-list" aria-live="polite">
+        <div class="sidebar-empty">No repositories yet.</div>
+      </nav>
+
+      <div class="sidebar-footer">
+        <span id="api-health" class="health"><i></i> Checking API</span>
+        <a href="/docs" target="_blank" rel="noreferrer">API docs</a>
+      </div>
+    </aside>
+
+    <main id="main-content" class="main-content">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Engineering analytics</p>
+          <h1 id="page-title">Repository overview</h1>
+          <p id="page-subtitle" class="page-subtitle">Measure how code changes, who owns it, and where complexity accumulates.</p>
+        </div>
+        <button id="open-ingestion" class="primary-button" type="button">
+          <span aria-hidden="true">＋</span> Add repository
+        </button>
+      </header>
+
+      <section id="welcome-panel" class="welcome-panel">
+        <div class="welcome-copy">
+          <span class="section-kicker">Start exploring</span>
+          <h2>Turn Git history into decisions.</h2>
+          <p>Connect a repository to reveal ownership, churn, growth, and modification patterns across every file and directory.</p>
+          <button class="primary-button" data-open-ingestion type="button">Analyse a repository</button>
+        </div>
+        <div class="signal-graphic" aria-hidden="true">
+          <div class="signal-grid"></div>
+          <div class="signal-line line-one"></div>
+          <div class="signal-line line-two"></div>
+          <span class="signal-node node-one"></span>
+          <span class="signal-node node-two"></span>
+          <span class="signal-node node-three"></span>
+        </div>
+      </section>
+
+      <section id="repository-dashboard" class="dashboard hidden" aria-live="polite">
+        <div class="repository-meta">
+          <div class="repo-identity">
+            <span class="repo-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M6 3v12M18 9v6M6 7h8a4 4 0 0 1 4 4M3 18a3 3 0 1 0 6 0 3 3 0 0 0-6 0Zm12 0a3 3 0 1 0 6 0 3 3 0 0 0-6 0Z"/></svg>
+            </span>
+            <div>
+              <div class="meta-title-row">
+                <h2 id="repository-name">Repository</h2>
+                <span id="repository-status" class="status-badge">Ready</span>
+              </div>
+              <p id="repository-reference" class="mono muted">—</p>
+            </div>
+          </div>
+          <div class="meta-details">
+            <span><small>Source</small><strong id="repository-source">—</strong></span>
+            <span><small>Commits</small><strong id="repository-commits">—</strong></span>
+            <span><small>Analysed</small><strong id="repository-date">—</strong></span>
+          </div>
+        </div>
+
+        <div id="repository-message" class="notice hidden" role="status"></div>
+
+        <section id="metrics-content">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Selected commit set</p>
+              <h2>Change profile</h2>
+            </div>
+            <a id="csv-download" class="secondary-button" href="#" download>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14"/></svg>
+              Export CSV
+            </a>
+          </div>
+
+          <div class="summary-grid">
+            <article class="summary-card accent-card">
+              <span>Commits</span><strong id="summary-commits">—</strong><small>non-merge commits</small>
+            </article>
+            <article class="summary-card">
+              <span>Lines added</span><strong id="summary-added">—</strong><small class="positive">growth contribution</small>
+            </article>
+            <article class="summary-card">
+              <span>Lines removed</span><strong id="summary-removed">—</strong><small class="negative">deletion volume</small>
+            </article>
+            <article class="summary-card">
+              <span>Total churn</span><strong id="summary-churn">—</strong><small>added + removed</small>
+            </article>
+          </div>
+
+          <form id="metrics-filters" class="filter-panel">
+            <div class="filter-heading">
+              <div><strong>Filter metrics</strong><span>Refine the current analysis</span></div>
+              <button id="reset-filters" class="text-button" type="button">Reset</button>
+            </div>
+            <div class="filter-grid">
+              <label>Object type
+                <select id="filter-object-type" name="object_type">
+                  <option value="">All objects</option>
+                  <option value="repository">Repository</option>
+                  <option value="directory">Directory</option>
+                  <option value="file">File</option>
+                </select>
+              </label>
+              <label>Path
+                <input id="filter-path" name="path" type="text" placeholder="e.g. src/rat">
+              </label>
+              <label>Author
+                <input id="filter-author" name="author" type="text" placeholder="Name or email">
+              </label>
+              <label>Since
+                <input id="filter-since" name="since" type="number" min="0" placeholder="UNIX timestamp">
+              </label>
+              <label>Until
+                <input id="filter-until" name="until" type="number" min="0" placeholder="UNIX timestamp">
+              </label>
+              <label class="commit-filter">Commit hashes
+                <input id="filter-commits" name="commits" type="text" placeholder="Separate hashes with spaces or commas">
+              </label>
+              <button class="primary-button filter-submit" type="submit">Apply filters</button>
+            </div>
+            <p id="filter-hint" class="form-hint">Time ranges and explicit commit hashes cannot be combined.</p>
+          </form>
+
+          <div class="table-card">
+            <div class="table-toolbar">
+              <div><strong>Metric details</strong><span id="result-count">0 rows</span></div>
+              <label class="table-search"><span class="sr-only">Search results</span><input id="table-search" type="search" placeholder="Search current results"></label>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th><button data-sort="path" type="button">Path <span>↕</span></button></th>
+                    <th><button data-sort="object_type" type="button">Type <span>↕</span></button></th>
+                    <th><button data-sort="author" type="button">Author <span>↕</span></button></th>
+                    <th class="numeric"><button data-sort="added" type="button">Added <span>↕</span></button></th>
+                    <th class="numeric"><button data-sort="removed" type="button">Removed <span>↕</span></button></th>
+                    <th class="numeric"><button data-sort="growth" type="button">Growth <span>↕</span></button></th>
+                    <th class="numeric"><button data-sort="churn" type="button">Churn <span>↕</span></button></th>
+                    <th class="numeric"><button data-sort="modifications" type="button">Changes <span>↕</span></button></th>
+                    <th class="numeric"><button data-sort="ownership" type="button">Ownership <span>↕</span></button></th>
+                  </tr>
+                </thead>
+                <tbody id="metrics-table-body"></tbody>
+              </table>
+              <div id="table-state" class="table-state">Select a ready repository to view metrics.</div>
+            </div>
+          </div>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="ingestion-dialog" class="ingestion-dialog">
+    <form method="dialog" class="dialog-frame">
+      <div class="dialog-header">
+        <div><p class="eyebrow">New analysis</p><h2>Add a repository</h2></div>
+        <button class="icon-button" value="cancel" aria-label="Close dialog" type="submit">×</button>
+      </div>
+      <div class="source-tabs" role="tablist" aria-label="Repository source">
+        <button class="source-tab active" data-source="clone" role="tab" aria-selected="true" type="button">Remote URL</button>
+        <button class="source-tab" data-source="zip" role="tab" aria-selected="false" type="button">ZIP upload</button>
+        <button class="source-tab" data-source="local" role="tab" aria-selected="false" type="button">Local path</button>
+      </div>
+
+      <div id="source-clone" class="source-panel active" role="tabpanel">
+        <label>HTTPS repository URL<input id="clone-url" type="url" placeholder="https://github.com/org/repository.git"></label>
+        <div class="form-row"><label>Name <input id="clone-name" type="text" maxlength="200" placeholder="Optional display name"></label><label>Git ref <input id="clone-ref" type="text" value="HEAD" maxlength="250"></label></div>
+        <p class="form-hint">Only public HTTPS repositories are accepted. The complete branch and tag history is cloned.</p>
+      </div>
+      <div id="source-zip" class="source-panel" role="tabpanel">
+        <label class="drop-zone" for="zip-file"><span class="upload-icon" aria-hidden="true">↑</span><strong>Choose a ZIP archive</strong><small id="zip-file-name">A Git working tree with its .git directory</small><input id="zip-file" type="file" accept=".zip,application/zip"></label>
+        <div class="form-row"><label>Name <input id="zip-name" type="text" maxlength="200" placeholder="Optional display name"></label><label>Git ref <input id="zip-ref" type="text" value="HEAD" maxlength="250"></label></div>
+      </div>
+      <div id="source-local" class="source-panel" role="tabpanel">
+        <label>Local repository path<input id="local-path" type="text" placeholder="/absolute/path/to/repository"></label>
+        <div class="form-row"><label>Name <input id="local-name" type="text" maxlength="200" placeholder="Optional display name"></label><label>Git ref <input id="local-ref" type="text" value="HEAD" maxlength="250"></label></div>
+        <p class="form-hint">The path must be accessible to the API server.</p>
+      </div>
+
+      <div id="job-progress" class="job-progress hidden" role="status">
+        <div class="progress-copy"><strong id="job-stage">Preparing</strong><span id="job-percent">0%</span></div>
+        <div class="progress-track"><i id="job-progress-bar"></i></div>
+        <p id="job-message">Waiting for a worker</p>
+      </div>
+      <div id="ingestion-error" class="form-error hidden" role="alert"></div>
+      <div class="dialog-actions">
+        <button class="secondary-button" value="cancel" type="submit">Cancel</button>
+        <button id="submit-ingestion" class="primary-button" type="button">Start analysis</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

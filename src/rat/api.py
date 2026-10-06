@@ -9,7 +9,8 @@ from typing import Annotated
 from uuid import uuid4
 
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile, status
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from rat.config import Settings
@@ -109,6 +110,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         ),
         lifespan=lifespan,
     )
+    static_dir = Path(__file__).with_name("static")
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
     app.state.settings = resolved_settings
     app.state.database = database
     app.state.store = store
@@ -123,6 +126,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         not_found_errors = (RepositoryNotFoundError, JobNotFoundError)
         status_code = 404 if isinstance(error, not_found_errors) else 400
         return JSONResponse(status_code=status_code, content={"detail": str(error)})
+
+    @app.get("/", include_in_schema=False)
+    def dashboard() -> FileResponse:
+        return FileResponse(static_dir / "index.html")
 
     @app.get("/api/health")
     def health() -> dict[str, str]:
