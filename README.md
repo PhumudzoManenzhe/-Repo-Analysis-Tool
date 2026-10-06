@@ -1,19 +1,19 @@
 # Repo Analysis Tool
 
-A portable FastAPI backend for measuring Git repository churn, growth, ownership, and modification frequency across repositories, directories, files, commit sets, and authors.
+A self-contained FastAPI dashboard for measuring Git repository churn, growth, ownership, and modification frequency across repositories, directories, files, commit sets, and authors.
 
-## Current foundation
+## Features
 
-- Streaming, single-pass Git history parser
-- Non-merge commits reachable from a selected reference
-- Git-native 50% rename detection and `.mailmap` author resolution
-- Binary-file exclusion and zero-line object tracking
-- Recursive file, directory, and repository metrics
-- Time-range and explicit-commit filtering
-- Author ownership metrics
-- SQLite persistence with WAL mode and atomic analysis replacement
-- JSON API and reference-compatible CSV export
-- Automated unit, integration, and cJSON contract verification
+- Repository ingestion from a ZIP containing `.git`, a public HTTPS clone URL, or a server-local path
+- Multiple independently navigable repositories with durable background job progress
+- Streaming, single-pass, non-merge Git history analysis with bounded database batches
+- Git-native rename detection, automatic `.mailmap` resolution, and persistent manual author merging
+- Binary-file exclusion and recursive file, directory, and repository metrics
+- Repository, author, file/directory, time-range, and explicit-commit filtering
+- Churn-composition and ownership visualizations, searchable/sortable metrics, and CSV export
+- SQLite WAL persistence with indexes optimized for repository, date, author, object, and commit queries
+- Secure ZIP extraction and HTTPS cloning protections
+- Automated unit, integration, frontend-contract, and reference-CSV verification
 
 ## Requirements
 
@@ -22,11 +22,16 @@ A portable FastAPI backend for measuring Git repository churn, growth, ownership
 
 ## Setup
 
+Run these commands from the project root:
+
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e '.[dev]'
+python -m pip install --upgrade pip
+python -m pip install -e '.[dev]'
 ```
+
+No Node.js build or external database is required. Runtime files are created in `./rat-data` by default.
 
 ## Run
 
@@ -34,7 +39,13 @@ pip install -e '.[dev]'
 rat-api
 ```
 
-The dashboard is available at `http://127.0.0.1:8000`, with interactive API documentation at `http://127.0.0.1:8000/docs`. It supports local paths, secure ZIP uploads, HTTPS cloning, background progress, metric filters, and CSV export.
+If the console script is unavailable, use:
+
+```bash
+PYTHONPATH=src python -m uvicorn rat.api:create_app --factory --host 127.0.0.1 --port 8000
+```
+
+Open `http://127.0.0.1:8000` for the dashboard or `http://127.0.0.1:8000/docs` for the interactive API. Use **Add repository** to upload a ZIP containing the repository's real `.git` directory, deeply clone a public HTTPS URL, or analyse a server-local path. Select repositories from the sidebar, manage aliases with **Merge authors**, apply metric filters, and use **Export CSV** to download the current selection.
 
 Analyse a local Git working tree:
 
@@ -51,7 +62,23 @@ curl 'http://127.0.0.1:8000/api/repositories/1/metrics'
 curl -o metrics.csv 'http://127.0.0.1:8000/api/repositories/1/metrics.csv'
 ```
 
-Filters include `since`, `until`, repeated `commits`, `object_type`, `path`, and `author`. Time ranges use an inclusive `since` UNIX timestamp and exclusive `until` timestamp.
+Filters include `since`, `until`, repeated `commits`, `object_type`, `path`, and `author`. Time ranges use an inclusive `since` UNIX timestamp and exclusive `until` timestamp. A time range and an explicit commit list are intentionally mutually exclusive.
+
+## Configuration
+
+All configuration is optional:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `RAT_DATA_DIR` | `./rat-data` | Database, uploads, and cloned repositories |
+| `RAT_DATABASE_PATH` | `$RAT_DATA_DIR/rat.sqlite3` | SQLite database location |
+| `RAT_REPOSITORIES_DIR` | `$RAT_DATA_DIR/repositories` | Extracted and cloned repositories |
+| `RAT_BACKGROUND_WORKERS` | `2` | Concurrent ZIP/clone analysis jobs |
+| `RAT_ANALYSIS_BATCH_SIZE` | `1000` | Commits persisted per transaction |
+| `RAT_GIT_TIMEOUT_SECONDS` | `1800` | Git command timeout |
+| `RAT_MAX_UPLOAD_BYTES` | `262144000` | Maximum compressed ZIP size |
+
+For a clean run, remove or relocate the configured data directory before startup. For production exposure, place the app behind an authenticated reverse proxy; the local-path ingestion option trusts users who can reach the API.
 
 ## Verification
 

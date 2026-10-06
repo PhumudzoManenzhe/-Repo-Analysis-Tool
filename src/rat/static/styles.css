@@ -1,20 +1,20 @@
 :root {
   color-scheme: light;
-  --ink: #18231e;
-  --muted: #66736c;
-  --quiet: #89948e;
-  --paper: #f4f5f0;
+  --ink: #333333;
+  --muted: #637b81;
+  --quiet: #7b8183;
+  --paper: #f5f5f5;
   --surface: #ffffff;
-  --line: #dfe4dd;
-  --line-soft: #eaede8;
-  --forest: #173f31;
-  --forest-dark: #0e2c22;
-  --mint: #b9e8cf;
-  --lime: #d8f58b;
-  --orange: #e97643;
-  --red: #c94e3f;
-  --shadow: 0 16px 44px rgba(22, 43, 34, 0.09);
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --line: #d9e0e1;
+  --line-soft: #e7ebec;
+  --forest: #425e5e;
+  --forest-dark: #27363b;
+  --mint: #a8d5d1;
+  --lime: #75b2ad;
+  --orange: #d9875f;
+  --red: #bf5b4d;
+  --shadow: 0 12px 34px rgba(39, 54, 59, 0.12);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
 }
 
 * { box-sizing: border-box; }
