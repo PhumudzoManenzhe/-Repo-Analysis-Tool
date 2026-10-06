@@ -31,3 +31,7 @@ class InvalidRemoteUrlError(RatError):
 
 class JobNotFoundError(RatError):
     """Raised when a background ingestion job does not exist."""
+
+
+class InvalidAuthorMergeError(RatError):
+    """Raised when authors cannot be merged within a repository."""

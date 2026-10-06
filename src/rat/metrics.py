@@ -50,6 +50,22 @@ class MetricsEngine:
                     "One or more selected commits are unknown or are merge commits"
                 )
 
+            aggregate_where = where
+            aggregate_parameters = list(parameters)
+            aggregate_author_joins = ""
+            if author is not None:
+                aggregate_author_joins = """
+                LEFT JOIN author_merges aggregate_merge
+                  ON aggregate_merge.repository_id = c.repository_id
+                 AND aggregate_merge.source_author_id = c.author_id
+                JOIN authors aggregate_author
+                  ON aggregate_author.id = COALESCE(
+                      aggregate_merge.canonical_author_id, c.author_id
+                  )
+                """
+                aggregate_where += " AND aggregate_author.display_name = ?"
+                aggregate_parameters.append(author)
+
             aggregate_rows = connection.execute(
                 f"""
                 SELECT oc.object_type, oc.path,
@@ -60,10 +76,11 @@ class MetricsEngine:
                 FROM commits c
                 JOIN object_changes oc
                   ON oc.repository_id = c.repository_id AND oc.commit_sha = c.sha
-                WHERE {where}
+                {aggregate_author_joins}
+                WHERE {aggregate_where}
                 GROUP BY oc.object_type, oc.path
                 """,
-                parameters,
+                aggregate_parameters,
             ).fetchall()
 
             author_where = f"{where} AND (oc.added + oc.removed) > 0"

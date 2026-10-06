@@ -78,6 +78,61 @@ def test_repository_metrics_and_author_ownership(database: Database, tmp_path: P
     assert bob.ownership == pytest.approx(3 / 18)
 
 
+def test_author_filter_limits_aggregate_and_author_metrics(
+    database: Database,
+    tmp_path: Path,
+) -> None:
+    repository_id, engine = _seed(database, tmp_path)
+
+    rows = engine.calculate(
+        repository_id,
+        object_type=ObjectType.REPOSITORY,
+        path="/",
+        author="Bob <bob@example.com>",
+    )
+
+    assert len(rows) == 2
+    aggregate, bob = rows
+    assert aggregate.author == "ALL"
+    assert (aggregate.added, aggregate.removed, aggregate.churn) == (2, 1, 3)
+    assert bob.author == "Bob <bob@example.com>"
+    assert bob.ownership == 1.0
+
+
+def test_manual_author_merge_updates_metrics_and_can_be_reversed(
+    database: Database,
+    tmp_path: Path,
+) -> None:
+    repository_id, engine = _seed(database, tmp_path)
+    store = RepositoryStore(database)
+    authors = store.list_authors(repository_id)
+    alice = next(author for author in authors if author["name"] == "Alice")
+    bob = next(author for author in authors if author["name"] == "Bob")
+
+    merged = store.merge_authors(repository_id, int(bob["id"]), int(alice["id"]))
+    bob_after = next(author for author in merged if author["name"] == "Bob")
+    rows = engine.calculate(
+        repository_id,
+        object_type=ObjectType.REPOSITORY,
+        path="/",
+    )
+
+    assert bob_after["canonical_display_name"] == "Alice <alice@example.com>"
+    assert len(rows) == 2
+    canonical = next(row for row in rows if row.author == "Alice <alice@example.com>")
+    assert canonical.churn == 18
+    assert canonical.modifications == 3
+    assert canonical.ownership == 1.0
+
+    store.unmerge_author(repository_id, int(bob["id"]))
+    restored = engine.calculate(
+        repository_id,
+        object_type=ObjectType.REPOSITORY,
+        path="/",
+    )
+    assert len(restored) == 3
+
+
 def test_time_and_manual_commit_sets_use_selected_commit_denominator(
     database: Database,
     tmp_path: Path,

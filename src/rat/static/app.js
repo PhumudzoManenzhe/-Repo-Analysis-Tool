@@ -9,6 +9,7 @@ const state = {
   repositories: [],
   selectedId: null,
   metrics: [],
+  authors: [],
   query: new URLSearchParams(),
   source: "clone",
   sortKey: "churn",
@@ -135,6 +136,7 @@ async function selectRepository(repositoryId) {
   const badge = $("#repository-status");
   badge.textContent = repository.status;
   badge.className = `status-badge ${repository.status}`;
+  $("#manage-authors").disabled = repository.status !== "ready";
   const notice = $("#repository-message");
   notice.classList.add("hidden");
   notice.classList.toggle("error", repository.status === "failed");
@@ -148,7 +150,21 @@ async function selectRepository(repositoryId) {
   }
 
   $("#metrics-content").classList.remove("hidden");
-  await loadMetrics();
+  await Promise.all([loadMetrics(), loadAuthors()]);
+}
+
+async function loadAuthors() {
+  state.authors = await api(`/api/repositories/${state.selectedId}/authors`);
+  const suggestions = $("#author-suggestions");
+  suggestions.replaceChildren();
+  const names = new Set(
+    state.authors.map((author) => author.canonical_display_name || author.display_name),
+  );
+  for (const name of names) {
+    const option = document.createElement("option");
+    option.value = name;
+    suggestions.append(option);
+  }
 }
 
 function formatDate(value) {
@@ -158,14 +174,20 @@ function formatDate(value) {
   return Number.isNaN(date.valueOf()) ? value : date.toLocaleDateString();
 }
 
+function unixTimestamp(selector) {
+  const value = $(selector).value;
+  if (!value) return "";
+  return String(Math.floor(new Date(value).getTime() / 1000));
+}
+
 function buildMetricQuery() {
   const query = new URLSearchParams();
   const values = {
     object_type: $("#filter-object-type").value,
     path: $("#filter-path").value.trim(),
     author: $("#filter-author").value.trim(),
-    since: $("#filter-since").value.trim(),
-    until: $("#filter-until").value.trim(),
+    since: unixTimestamp("#filter-since"),
+    until: unixTimestamp("#filter-until"),
   };
   for (const [key, value] of Object.entries(values)) {
     if (value) query.set(key, value);
@@ -209,6 +231,56 @@ function renderSummary() {
   $("#summary-added").textContent = aggregate ? number.format(aggregate.added) : "0";
   $("#summary-removed").textContent = aggregate ? number.format(aggregate.removed) : "0";
   $("#summary-churn").textContent = aggregate ? number.format(aggregate.churn) : "0";
+  renderVisualizations(aggregate);
+}
+
+function renderVisualizations(aggregate) {
+  const added = aggregate?.added || 0;
+  const removed = aggregate?.removed || 0;
+  const churn = added + removed;
+  const addedShare = churn ? (added / churn) * 100 : 50;
+  $("#churn-added").style.width = `${addedShare}%`;
+  $("#churn-removed").style.width = `${100 - addedShare}%`;
+  $("#churn-balance").textContent = churn
+    ? `${percent.format(addedShare)}% additions`
+    : "No line churn";
+
+  const chart = $("#ownership-chart");
+  chart.replaceChildren();
+  if (!aggregate) return;
+  const authors = state.metrics
+    .filter((row) => (
+      row.author !== "ALL"
+      && row.object_type === aggregate.object_type
+      && row.path === aggregate.path
+    ))
+    .sort((left, right) => (right.ownership || 0) - (left.ownership || 0))
+    .slice(0, 4);
+  if (!authors.length) {
+    const empty = document.createElement("span");
+    empty.className = "muted";
+    empty.textContent = "No author churn in this selection.";
+    chart.append(empty);
+    return;
+  }
+  for (const author of authors) {
+    const row = document.createElement("div");
+    row.className = "ownership-row";
+    const name = document.createElement("span");
+    name.className = "ownership-name";
+    name.textContent = author.author;
+    name.title = author.author;
+    const track = document.createElement("span");
+    track.className = "ownership-track";
+    const bar = document.createElement("i");
+    bar.style.width = `${(author.ownership || 0) * 100}%`;
+    track.append(bar);
+    const value = document.createElement("span");
+    value.className = "ownership-value";
+    value.textContent = `${percent.format((author.ownership || 0) * 100)}%`;
+    row.append(name, track, value);
+    chart.append(row);
+  }
 }
 
 function renderMetrics() {
@@ -426,9 +498,128 @@ function resetFilters() {
   loadMetrics();
 }
 
+async function openAuthors() {
+  if (!state.selectedId) return;
+  $("#author-error").classList.add("hidden");
+  $("#authors-dialog").showModal();
+  try {
+    state.authors = await api(`/api/repositories/${state.selectedId}/authors`);
+    renderAuthors();
+  } catch (error) {
+    showAuthorError(error.message);
+  }
+}
+
+function renderAuthors() {
+  $("#author-count").textContent = `${state.authors.length} ${state.authors.length === 1 ? "identity" : "identities"}`;
+  const source = $("#source-author");
+  const previousSource = Number(source.value);
+  source.replaceChildren();
+  for (const author of state.authors) source.append(authorOption(author));
+  if (state.authors.some((author) => author.id === previousSource)) {
+    source.value = String(previousSource);
+  }
+  renderCanonicalAuthors();
+
+  const list = $("#author-list");
+  list.replaceChildren();
+  for (const author of state.authors) {
+    const row = document.createElement("div");
+    row.className = "author-row";
+    const identity = document.createElement("div");
+    const title = document.createElement("strong");
+    title.textContent = author.display_name;
+    const detail = document.createElement("small");
+    detail.textContent = `${number.format(author.commit_count)} commits`;
+    identity.append(title, detail);
+    const mapping = document.createElement("span");
+    mapping.className = "merge-tag";
+    mapping.textContent = author.canonical_display_name
+      ? `→ ${author.canonical_display_name}`
+      : "Canonical";
+    row.append(identity, mapping);
+    if (author.canonical_author_id) {
+      const undo = document.createElement("button");
+      undo.type = "button";
+      undo.className = "unmerge-button";
+      undo.textContent = "Undo";
+      undo.addEventListener("click", () => unmergeAuthor(author.id));
+      row.append(undo);
+    } else {
+      row.append(document.createElement("span"));
+    }
+    list.append(row);
+  }
+  $("#merge-author").disabled = state.authors.length < 2;
+}
+
+function renderCanonicalAuthors() {
+  const sourceId = Number($("#source-author").value);
+  const canonical = $("#canonical-author");
+  canonical.replaceChildren();
+  for (const author of state.authors) {
+    if (author.id !== sourceId && !author.canonical_author_id) {
+      canonical.append(authorOption(author));
+    }
+  }
+}
+
+function authorOption(author) {
+  const option = document.createElement("option");
+  option.value = author.id;
+  option.textContent = `${author.display_name} · ${author.commit_count} commits`;
+  return option;
+}
+
+async function mergeAuthor() {
+  const sourceId = Number($("#source-author").value);
+  const canonicalId = Number($("#canonical-author").value);
+  if (!sourceId || !canonicalId) {
+    showAuthorError("Select two different author identities.");
+    return;
+  }
+  try {
+    state.authors = await api(`/api/repositories/${state.selectedId}/author-merges`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source_author_id: sourceId, canonical_author_id: canonicalId }),
+    });
+    $("#author-error").classList.add("hidden");
+    renderAuthors();
+    await loadMetrics();
+    showToast("Author identities merged.");
+  } catch (error) {
+    showAuthorError(error.message);
+  }
+}
+
+async function unmergeAuthor(sourceId) {
+  try {
+    state.authors = await api(
+      `/api/repositories/${state.selectedId}/author-merges/${sourceId}`,
+      { method: "DELETE" },
+    );
+    renderAuthors();
+    await loadMetrics();
+    showToast("Author merge removed.");
+  } catch (error) {
+    showAuthorError(error.message);
+  }
+}
+
+function showAuthorError(message) {
+  const error = $("#author-error");
+  error.textContent = message;
+  error.classList.remove("hidden");
+}
+
 function bindEvents() {
   $("#open-ingestion").addEventListener("click", openIngestion);
   $$('[data-open-ingestion]').forEach((button) => button.addEventListener("click", openIngestion));
+  $("#manage-authors").addEventListener("click", openAuthors);
+  $("#close-authors").addEventListener("click", () => $("#authors-dialog").close());
+  $("#source-author").addEventListener("change", renderCanonicalAuthors);
+  $("#merge-author").addEventListener("click", mergeAuthor);
   $("#refresh-repositories").addEventListener("click", () => loadRepositories());
   $$(".source-tab").forEach((tab) => tab.addEventListener("click", () => selectSource(tab.dataset.source)));
   $("#submit-ingestion").addEventListener("click", submitIngestion);

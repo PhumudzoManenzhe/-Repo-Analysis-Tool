@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from rat.db import Database
-from rat.errors import RepositoryNotFoundError
+from rat.errors import InvalidAuthorMergeError, RepositoryNotFoundError
 from rat.models import ParsedCommit, RepositoryStatus
 
 
@@ -58,6 +58,90 @@ class RepositoryStore:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def list_authors(self, repository_id: int) -> list[dict[str, Any]]:
+        with self.database.read() as connection:
+            self._assert_repository_exists(connection, repository_id)
+            rows = connection.execute(
+                """
+                SELECT a.id, a.name, a.email, a.display_name,
+                       COUNT(c.sha) AS commit_count,
+                       am.canonical_author_id,
+                       canonical.display_name AS canonical_display_name
+                FROM authors a
+                LEFT JOIN commits c
+                  ON c.repository_id = a.repository_id AND c.author_id = a.id
+                LEFT JOIN author_merges am
+                  ON am.repository_id = a.repository_id AND am.source_author_id = a.id
+                LEFT JOIN authors canonical ON canonical.id = am.canonical_author_id
+                WHERE a.repository_id = ?
+                GROUP BY a.id, a.name, a.email, a.display_name,
+                         am.canonical_author_id, canonical.display_name
+                ORDER BY a.display_name COLLATE NOCASE
+                """,
+                (repository_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def merge_authors(
+        self,
+        repository_id: int,
+        source_author_id: int,
+        canonical_author_id: int,
+    ) -> list[dict[str, Any]]:
+        if source_author_id == canonical_author_id:
+            raise InvalidAuthorMergeError("An author cannot be merged into itself")
+        with self.database.transaction() as connection:
+            self._assert_repository_exists(connection, repository_id)
+            rows = connection.execute(
+                """
+                SELECT id FROM authors
+                WHERE repository_id = ? AND id IN (?, ?)
+                """,
+                (repository_id, source_author_id, canonical_author_id),
+            ).fetchall()
+            if len(rows) != 2:
+                raise InvalidAuthorMergeError("Both authors must belong to this repository")
+
+            target = connection.execute(
+                """
+                SELECT canonical_author_id FROM author_merges
+                WHERE repository_id = ? AND source_author_id = ?
+                """,
+                (repository_id, canonical_author_id),
+            ).fetchone()
+            final_canonical_id = (
+                int(target["canonical_author_id"]) if target is not None else canonical_author_id
+            )
+            if final_canonical_id == source_author_id:
+                raise InvalidAuthorMergeError("The requested merge would create a cycle")
+
+            connection.execute(
+                """
+                UPDATE author_merges SET canonical_author_id = ?
+                WHERE repository_id = ? AND canonical_author_id = ?
+                """,
+                (final_canonical_id, repository_id, source_author_id),
+            )
+            connection.execute(
+                """
+                INSERT INTO author_merges(repository_id, source_author_id, canonical_author_id)
+                VALUES (?, ?, ?)
+                ON CONFLICT(repository_id, source_author_id)
+                DO UPDATE SET canonical_author_id = excluded.canonical_author_id
+                """,
+                (repository_id, source_author_id, final_canonical_id),
+            )
+        return self.list_authors(repository_id)
+
+    def unmerge_author(self, repository_id: int, source_author_id: int) -> list[dict[str, Any]]:
+        with self.database.transaction() as connection:
+            self._assert_repository_exists(connection, repository_id)
+            connection.execute(
+                "DELETE FROM author_merges WHERE repository_id = ? AND source_author_id = ?",
+                (repository_id, source_author_id),
+            )
+        return self.list_authors(repository_id)
+
     def set_status(
         self,
         repository_id: int,
@@ -88,7 +172,7 @@ class RepositoryStore:
         ref_sha: str,
         commits: Iterable[ParsedCommit],
         *,
-        batch_size: int = 250,
+        batch_size: int = 1_000,
         progress: Callable[[int], None] | None = None,
     ) -> int:
         """Replace derived history in bounded batches hidden behind analysis status."""
@@ -151,6 +235,8 @@ class RepositoryStore:
         author_ids: dict[tuple[str, str], int],
     ) -> None:
         with self.database.transaction() as connection:
+            commit_rows: list[tuple[object, ...]] = []
+            change_rows: list[tuple[object, ...]] = []
             for parsed in batch:
                 commit = parsed.commit
                 author_id = self._author_id(
@@ -160,39 +246,43 @@ class RepositoryStore:
                     commit.author_email,
                     author_ids,
                 )
-                connection.execute(
-                    """
-                    INSERT INTO commits(
-                        repository_id, sha, parent_sha, author_id, committer_date
-                    ) VALUES (?, ?, ?, ?, ?)
-                    """,
+                commit_rows.append(
                     (
                         repository_id,
                         commit.sha,
                         commit.parent_sha,
                         author_id,
                         commit.committer_date,
-                    ),
-                )
-                if parsed.changes:
-                    connection.executemany(
-                        """
-                        INSERT INTO object_changes(
-                            repository_id, commit_sha, object_type, path, added, removed
-                        ) VALUES (?, ?, ?, ?, ?, ?)
-                        """,
-                        (
-                            (
-                                repository_id,
-                                commit.sha,
-                                change.object_type,
-                                change.path,
-                                change.added,
-                                change.removed,
-                            )
-                            for change in parsed.changes
-                        ),
                     )
+                )
+                change_rows.extend(
+                    (
+                        repository_id,
+                        commit.sha,
+                        change.object_type,
+                        change.path,
+                        change.added,
+                        change.removed,
+                    )
+                    for change in parsed.changes
+                )
+
+            connection.executemany(
+                """
+                INSERT INTO commits(repository_id, sha, parent_sha, author_id, committer_date)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                commit_rows,
+            )
+            if change_rows:
+                connection.executemany(
+                    """
+                    INSERT INTO object_changes(
+                        repository_id, commit_sha, object_type, path, added, removed
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    change_rows,
+                )
 
     @staticmethod
     def _assert_repository_exists(connection: sqlite3.Connection, repository_id: int) -> None:

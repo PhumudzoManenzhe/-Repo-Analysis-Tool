@@ -65,6 +65,6 @@ The verifier compares rows without relying on CSV ordering, checks integer field
 
 ## Architecture
 
-Git history is parsed once into per-commit object changes. File changes are rolled up to every ancestor directory and the repository root during ingestion. Indexed SQL aggregations then calculate metrics for any commit set without re-running Git. Repository analyses are replaced in one transaction, so failed runs never expose partial metric data.
+Git history is parsed once into per-commit object changes. File changes are rolled up to every ancestor directory and the repository root during ingestion. Indexed SQL aggregations then calculate metrics for any commit set without re-running Git. Analyses are written in bounded batches for large histories, while repository status prevents partial metric data from being exposed.
 
 Runtime data defaults to `./rat-data` and can be relocated with `RAT_DATA_DIR`. The embedded SQLite database requires no external service and uses WAL mode so dashboard reads can continue during ingestion.

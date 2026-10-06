@@ -38,6 +38,11 @@ class RemoteCloneRequest(BaseModel):
     ref: str = Field(default="HEAD", min_length=1, max_length=250)
 
 
+class AuthorMergeRequest(BaseModel):
+    source_author_id: int = Field(gt=0)
+    canonical_author_id: int = Field(gt=0)
+
+
 async def _persist_upload(upload: UploadFile, directory: Path, max_bytes: int) -> Path:
     target = directory / f"{uuid4().hex}.zip"
     size = 0
@@ -142,6 +147,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/repositories/{repository_id}")
     def repository(repository_id: int) -> dict[str, object]:
         return store.get_repository(repository_id)
+
+    @app.get("/api/repositories/{repository_id}/authors")
+    def repository_authors(repository_id: int) -> list[dict[str, object]]:
+        return store.list_authors(repository_id)
+
+    @app.post("/api/repositories/{repository_id}/author-merges")
+    def merge_repository_authors(
+        repository_id: int,
+        request: AuthorMergeRequest,
+    ) -> list[dict[str, object]]:
+        return store.merge_authors(
+            repository_id,
+            request.source_author_id,
+            request.canonical_author_id,
+        )
+
+    @app.delete("/api/repositories/{repository_id}/author-merges/{source_author_id}")
+    def unmerge_repository_author(
+        repository_id: int,
+        source_author_id: int,
+    ) -> list[dict[str, object]]:
+        return store.unmerge_author(repository_id, source_author_id)
 
     @app.post("/api/repositories/local", status_code=201)
     def analyse_local(request: LocalAnalysisRequest) -> dict[str, object]:

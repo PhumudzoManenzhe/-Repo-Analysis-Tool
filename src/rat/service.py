@@ -21,7 +21,7 @@ class AnalysisService:
         store: RepositoryStore,
         *,
         git_timeout_seconds: int = 1800,
-        batch_size: int = 250,
+        batch_size: int = 1_000,
     ) -> None:
         self.store = store
         self.git_timeout_seconds = git_timeout_seconds

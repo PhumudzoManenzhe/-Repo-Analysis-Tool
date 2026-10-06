@@ -75,6 +75,7 @@
               <div class="meta-title-row">
                 <h2 id="repository-name">Repository</h2>
                 <span id="repository-status" class="status-badge">Ready</span>
+                <button id="manage-authors" class="inline-button" type="button">Merge authors</button>
               </div>
               <p id="repository-reference" class="mono muted">—</p>
             </div>
@@ -115,6 +116,18 @@
             </article>
           </div>
 
+          <div class="visual-grid">
+            <article class="visual-card">
+              <div class="visual-heading"><div><span>Code movement</span><strong>Churn composition</strong></div><small id="churn-balance">—</small></div>
+              <div class="churn-track" aria-label="Added and removed line proportion"><i id="churn-added"></i><i id="churn-removed"></i></div>
+              <div class="chart-legend"><span><i class="legend-added"></i>Added</span><span><i class="legend-removed"></i>Removed</span></div>
+            </article>
+            <article class="visual-card">
+              <div class="visual-heading"><div><span>Contribution share</span><strong>Top ownership</strong></div><small>by churn</small></div>
+              <div id="ownership-chart" class="ownership-chart"></div>
+            </article>
+          </div>
+
           <form id="metrics-filters" class="filter-panel">
             <div class="filter-heading">
               <div><strong>Filter metrics</strong><span>Refine the current analysis</span></div>
@@ -133,13 +146,14 @@
                 <input id="filter-path" name="path" type="text" placeholder="e.g. src/rat">
               </label>
               <label>Author
-                <input id="filter-author" name="author" type="text" placeholder="Name or email">
+                <input id="filter-author" name="author" type="text" list="author-suggestions" placeholder="Name or email">
+                <datalist id="author-suggestions"></datalist>
               </label>
-              <label>Since
-                <input id="filter-since" name="since" type="number" min="0" placeholder="UNIX timestamp">
+              <label>Period start
+                <input id="filter-since" name="since" type="datetime-local">
               </label>
-              <label>Until
-                <input id="filter-until" name="until" type="number" min="0" placeholder="UNIX timestamp">
+              <label>Period end
+                <input id="filter-until" name="until" type="datetime-local">
               </label>
               <label class="commit-filter">Commit hashes
                 <input id="filter-commits" name="commits" type="text" placeholder="Separate hashes with spaces or commas">
@@ -217,6 +231,25 @@
         <button id="submit-ingestion" class="primary-button" type="button">Start analysis</button>
       </div>
     </form>
+  </dialog>
+
+  <dialog id="authors-dialog" class="ingestion-dialog authors-dialog">
+    <div class="dialog-frame">
+      <div class="dialog-header">
+        <div><p class="eyebrow">Identity management</p><h2>Merge authors</h2></div>
+        <button id="close-authors" class="icon-button" aria-label="Close dialog" type="button">×</button>
+      </div>
+      <p class="dialog-intro">Combine alternate names or email addresses into one canonical contributor. Git `.mailmap` aliases are already resolved during analysis.</p>
+      <div class="author-merge-form">
+        <label>Alias to merge<select id="source-author"></select></label>
+        <span aria-hidden="true">→</span>
+        <label>Canonical author<select id="canonical-author"></select></label>
+        <button id="merge-author" class="primary-button" type="button">Merge</button>
+      </div>
+      <div class="author-list-heading"><strong>Repository authors</strong><span id="author-count">0 identities</span></div>
+      <div id="author-list" class="author-list"></div>
+      <div id="author-error" class="form-error hidden" role="alert"></div>
+    </div>
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>

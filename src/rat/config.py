@@ -17,7 +17,7 @@ class Settings:
     git_timeout_seconds: int = 1800
     sqlite_busy_timeout_ms: int = 10_000
     background_workers: int = 2
-    analysis_batch_size: int = 250
+    analysis_batch_size: int = 1_000
     max_upload_bytes: int = 250 * 1024 * 1024
     max_extracted_bytes: int = 2 * 1024 * 1024 * 1024
     max_archive_members: int = 100_000
@@ -45,7 +45,7 @@ class Settings:
             git_timeout_seconds=timeout,
             sqlite_busy_timeout_ms=busy_timeout,
             background_workers=max(1, int(os.getenv("RAT_BACKGROUND_WORKERS", "2"))),
-            analysis_batch_size=max(1, int(os.getenv("RAT_ANALYSIS_BATCH_SIZE", "250"))),
+            analysis_batch_size=max(1, int(os.getenv("RAT_ANALYSIS_BATCH_SIZE", "1000"))),
             max_upload_bytes=int(os.getenv("RAT_MAX_UPLOAD_BYTES", str(250 * 1024 * 1024))),
             max_extracted_bytes=int(
                 os.getenv("RAT_MAX_EXTRACTED_BYTES", str(2 * 1024 * 1024 * 1024))
